@@ -1,10 +1,15 @@
 import numpy as np
 
-Seat = list(range(4))
+NUM_PLAYERS: int = 4
+NUM_CARDS: int = 52
+AUCTION_SPACE_SIZE: int = 38
+AUCTION_HISTORY_SIZE: int = 322
+
+Seat = list(range(NUM_PLAYERS))
 Suit = list(range(4))
 Strain = list(range(5))
 Rank = list(range(2, 15))
-FULL_DECK = list(range(52))
+FULL_DECK = list(range(NUM_CARDS))
 
 Seat2Group = {0: 0, 1: 1, 2: 0, 3: 1} # or s%2
 

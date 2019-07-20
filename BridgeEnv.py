@@ -42,7 +42,7 @@ class BridgeEnv(object):
                 raise Exception("illegal seats")
         self.turn = self.bidding_seats[0] # whose turn, start from the smallest one by default.
 
-        # TODO: check whether resetting the environment on initialisation can break anything
+        # TODO[ス: check whether resetting the environment on initialisation can break anything
         # resetting the environment upon initialisation
         # self.reset()
 
@@ -54,10 +54,18 @@ class BridgeEnv(object):
 
     def reset(self, predeal_seats=None, reshuffle=True):  # North and South
         """
+        This method resets the environment - namely:
+           - clears bidding history
+           - generates new vulnerabilities
+           - resets elimination signals (i.e. indicator of actions which cannot be performed)
+           -
+
         :param predeal_seats: if not None, allocate cards to those seats. e.g. [0, 1] stands for North and East
         :param reshuffle: whether reshuffle the hands for the predeal seats
         :return: deal
         """
+
+        # resetting bidding history
         self.bidding_history = np.zeros(36, dtype=np.uint8) # 1C 1D 1H 1S 1N ... 7N (PASS - not considered)
 
         # generating vulnerabilities
@@ -69,6 +77,7 @@ class BridgeEnv(object):
         # resetting elimination_history - doubles and redoubles are not allowed at the start
         self.elimination_signal[REDOUBLE_RANGE] = 1
 
+        # resetting various counts
         self.max_bid = -1
         self.n_pass = 0
         self.n_double = 0
@@ -76,9 +85,10 @@ class BridgeEnv(object):
 
         self.turn = self.bidding_seats[0] # the first one.
         self.done = False
+
+        # TODO[ス I've got no idea what the vars below do
         self.strain_declarer = {0: {}, 1: {}}
         self.group_declarer = -1
-
         if predeal_seats is None:
             predeal_seats = self.bidding_seats
 
@@ -101,7 +111,11 @@ class BridgeEnv(object):
 
     def step(self, action):
         """
+        This method performs an action (bid) submitted via the 'action' argument, and performs an
+        update of self.bidding_history and self.auction_history
+
         :param action: bid action
+
         :return: state, reward, done
         """
         if self.done:
@@ -198,10 +212,13 @@ class BridgeEnv(object):
 
             # np.mean is moved to score
             declarer = self.strain_declarer[self.group_declarer][strain] # thise group's first declarer
-            reward = Deal.score(dealer=self.deal, level=level, strain=strain, declarer=declarer, tries=self.nmc, mode=self.score_mode)
+            reward = Deal.score(dealer=self.deal,
+                                level=level,
+                                strain=strain,
+                                declarer=declarer,
+                                tries=self.nmc,
+                                mode=self.score_mode)
             self.done = True
-
-
 
         state = (hand, self.bidding_history)
         info = {"turn": Seat[self.turn], "max_bid": self.max_bid}

@@ -37,8 +37,8 @@ def one_hot_holding(holding):
 
 
 def convert_action2strain(action):
-    bid_strain = action%5
-    return {3:0, 2:1, 1: 2, 0: 3, 4: 4}[bid_strain]
+    bid_strain = action % 5
+    return {3: 0, 2: 1, 1: 2, 0: 3, 4: 4}[bid_strain]
 
 
 def convert_action2level(action):
@@ -98,6 +98,7 @@ def load_deal_data(fn):
         predeals, score, _ =  pickle.load(f)
         score = score/12
         return list(zip(predeals, score))
+
 
 def load_full_deal_data(fn):
     with open(fn, "rb") as f:

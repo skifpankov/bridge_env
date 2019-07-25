@@ -98,7 +98,7 @@ class BridgeEnvOffline(object):
         """
         :param action: bid action
         :param tries: MC tries.
-        :return: state, reward, done
+        :return: state, reward, done_bidding
         """
         if self.done:
             raise Exception("No more actions can be taken")

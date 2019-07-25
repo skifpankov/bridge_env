@@ -10,11 +10,11 @@ state = env.reset()
 
 #
 for i in range(34): # action 34 lead to termination immediately, pass is not allowed
-    env.step(i)
-    env.step(35)
+    env.step_bid(i)
+    env.step_bid(35)
     print("======================= GREAT SPLIT LINE %i ===============================" % i)
     env.reset(reshuffle=True)
-env.step(34)
+env.step_bid(34)
 print(time.time() - start)
 
 

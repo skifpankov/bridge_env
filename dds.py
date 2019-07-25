@@ -125,7 +125,7 @@ def solve(deal, strain, declarer):
 
 def _solve_all_boards(n, deals, strains, leaders, targets, solutions, modes):
     c_boards = Boards.from_board(n, deals, strains, leaders, targets, solutions, modes)
-    # print("prepare board done")
+    # print("prepare board done_bidding")
     n_futps = solvedBoards.init_n_futps(n)
     #  https://github.com/dds-bridge/dds/blob/7af2b0ca801cb54b9d742ed4593b1809c7c5da61/src/SolveBoard.cpp#L265
     # SolveAllBoardsN is not externed.
@@ -148,7 +148,7 @@ def solve_all(deals, strains, decalers):
     targets = [-1]*n
     sols = [1]*n
     modes = [1]*n
-    # print("Preparation done")
+    # print("Preparation done_bidding")
     n_futp = _solve_all_boards(n, deals, strains, leaders, targets, sols, modes)
     best_scores = [len(Rank)-n_futp.solvedBoard[i].score[0] for i in range(n)]
     return best_scores

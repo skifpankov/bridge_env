@@ -89,7 +89,6 @@ class Deal(object):
         scores_for_all_strains = np.mean(scores_for_all_strains, axis=-1)
         return scores_for_all_strains
 
-
     @classmethod
     def score(cls, dealer, level, strain, declarer, tries, mode=None):
         # target = level + 6

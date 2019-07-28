@@ -39,6 +39,7 @@ class BridgeEnv(object):
 
         self.nmc = nmc # MC times
         self.max_bid = -1
+        self.contract = None
         self.done_bidding = False
         self.done_playing = False
         self.debug = debug
@@ -105,6 +106,7 @@ class BridgeEnv(object):
 
         # resetting various counts
         self.max_bid = -1
+        self.contract = None
         self.n_pass = 0
         self.n_double = 0
         self.n_redouble = 0

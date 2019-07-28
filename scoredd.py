@@ -1,3 +1,4 @@
+from typing import Union, Tuple
 from json import load, dump
 from multiprocessing import Pool
 from argparse import ArgumentParser
@@ -5,8 +6,18 @@ from numpy import zeros, round
 from config import ScoreBias, ScoreScale
 import time
 
-def convert2IMP(diff):
+
+def convert2IMP(diff: Union[int, float]) -> Union[int, float]:
+	"""
+	Calculates the IMP score from the difference in scores (in bridge points)
+
+	:param diff: score difference
+
+	:return:
+	"""
+
 	imp = 0
+
 	if diff >= 20 and diff < 50:
 		imp = 1
 	elif diff >= 50 and diff < 90:
@@ -57,10 +68,24 @@ def convert2IMP(diff):
 		imp = 24
 	return imp
 
-def score(input_tuple):
+
+def score(input_tuple, return_IMP: bool = True):
+	"""
+	Calculates the score of a provided bid, trump card and the number of tricks taken
+
+	Does not take vulnerability into account
+	Does not take doubles and redoubles into account
+
+	:param input_tuple: a tuple
+	:param return_IMP: whether the score should be returned as an IMP or as raw scores
+
+	:return:
+	"""
+
 	# bid_tricks range from 1 - 7
 	# max_tricks range from 0 - 13
 	bid_tricks, trump, max_tricks = input_tuple
+
 	declarer_score = 0
 	defender_score = 0
 
@@ -72,7 +97,7 @@ def score(input_tuple):
 		declarer_score += (ScoreScale[trump] * contract_tricks + ScoreBias[trump])
 
 	# Were there overtricks?
-	if max_tricks > (bid_tricks+6):
+	if max_tricks > (bid_tricks + 6):
 		over_tricks = max_tricks - bid_tricks - 6
 		declarer_score += ScoreScale[trump] * over_tricks
 
@@ -88,18 +113,21 @@ def score(input_tuple):
 		declarer_score += 1000
 
 	# Converting to IMP
-	diff = abs(declarer_score - defender_score)
-	imp = convert2IMP(diff)
+	if return_IMP:
+		diff = abs(declarer_score - defender_score)
+		imp = convert2IMP(diff)
 
-	if declarer_score > defender_score:
-		return imp
+		if declarer_score > defender_score:
+			return imp
+		else:
+			return (-1) * imp
 	else:
-		return (-1) * imp 
+		return declarer_score, defender_score
 
 
 # calculate the table
 def precompute_scores():
-	input_space = [(bid_tricks, trump, max_tricks)  for bid_tricks in range(1,8)
+	input_space = [(bid_tricks, trump, max_tricks)  for bid_tricks in range(1, 8)
 				   									for trump in range(5)
 				   									for max_tricks in range(14)]
 

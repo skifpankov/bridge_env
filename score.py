@@ -278,7 +278,7 @@ def precompute_scores_v2(full_version: bool = False,
 
         if min_zero:
             score_offset = 7600
-            norm = score_offset + 2660 + 500 * game
+            norm = score_offset + 2660 + (500 + 1320) * game
         else:
             norm = 7600 + 500 * game
 

@@ -1,10 +1,14 @@
 from typing import List, Union
+import random
+import numpy as np
+import pandas as pd
+
 from deal import Deal
 from copy import deepcopy
 from config import *
-import random
-import numpy as np
 from bridge_utils import *
+from score import precompute_scores_v2
+
 
 # CHEAT-SHEET FOR BIDS
 # 0-34: contract bids [1C, 1D, 1H, 1S, 1NT, ..., 7S, 7NT]
@@ -18,7 +22,15 @@ class BridgeEnv(object):
     This class is intended to replicate bidding and playing in bridge
     """
 
-    def __init__(self, bidding_seats=Seat, nmc=20, debug=False, score_mode="IMP"):
+    def __init__(self,
+                 bidding_seats=Seat,
+                 nmc=20,
+                 debug=False,
+                 score_mode="IMP"):
+
+        # pre-calculating scores
+        self._score_table = precompute_scores_v2(full_version=True)
+
         # deal is the state
         self.deal = None
         self.one_hot_deal = None

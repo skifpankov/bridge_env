@@ -2,9 +2,10 @@ from typing import List, Union
 import random
 import numpy as np
 import pandas as pd
+from copy import deepcopy
 
 from deal import Deal
-from copy import deepcopy
+from contract import Contract
 from config import *
 from bridge_utils import *
 from score import precompute_scores_v2
@@ -16,10 +17,12 @@ from score import precompute_scores_v2
 #   36: double
 #   37: redouble
 
+# CHEAT-SHEET FOR keys of self._score_table:
+#    (bid_tricks, trump, actual_tricks, vul, double)
 
 class BridgeEnv(object):
     """
-    This class is intended to replicate bidding and playing in bridge
+    This class is intended to replicate bridge bidding and playing
     """
 
     def __init__(self,
@@ -31,29 +34,34 @@ class BridgeEnv(object):
         # pre-calculating scores
         self._score_table = precompute_scores_v2(full_version=True)
 
+        self.cards = deepcopy(FULL_DECK)
+
         # deal is the state
         self.deal = None
         self.one_hot_deal = None
-        self.cards = deepcopy(FULL_DECK)
-        self.bidding_history = np.zeros(36, dtype=np.uint8) # pass is included in the history
-        self.auction_history = np.zeros(AUCTION_HISTORY_SIZE, dtype=np.uint8)
-        self.vulnerability = np.zeros(NUM_PAIRS, dtype=np.uint8)
+        self.vulnerability = None
+
+        self.auction_history = None
+
+        self.history_bid = None
+        self.history_play = None
 
         # bidding elimination signals - i.e. which bids are currently not permitted
-        self.elimination_signal = np.zeros(AUCTION_SPACE_SIZE, dtype=np.uint8)
+        self.elim_sig_bid = None
 
         # playing elimination signals - i.e. which cards each player does not possess
-        self.elimination_signal_play = None
+        self.elim_sig_play = None
 
-        self.n_pass = 0
-        self.n_double = 0
-        self.n_redouble = 0
+        self.n_pass = None
+        self.n_double = None
+        self.n_redouble = None
 
         self.nmc = nmc # MC times
-        self.max_bid = -1
-        self.contract = None
-        self.done_bidding = False
-        self.done_playing = False
+        self.max_bid = None
+        self.contract = Contract()
+        self.done_bidding = None
+        self.done_playing = None
+
         self.debug = debug
         self.score_mode = score_mode
         self.strain_declarer = {0: {}, 1: {}}
@@ -66,30 +74,120 @@ class BridgeEnv(object):
                 raise Exception(f'seat {seat} is illegal. bidding_seats argument can only contain '
                                 f'values in {Seat}')
 
-        # the index of the first bidder; start from the smallest one by default
-        self.turn = self.bidding_seats[0]
+        # index of the first bidder; start from the smallest one by default
+        self.turn_bid = None
 
-        # the index of the first player
+        # index of the first player
         # TODO[ス: finish writing the logic for self.turn_play
         self.turn_play = self.bidding_seats[0]
 
+        # index of playing rounds complete
+        self.n_play_actions = None
+        self.n_play_turns = None
+
         # vector of tricks for all players
+        self.tricks = None
+
+        # matrix of current scores
+        self.score_play = None
+
+        # (re)setting the key environment variables upon initialisation
+        self._reset()
+
+    def _reset(self) -> None:
+        """
+        An internal method that resets the key variables held by the class for the new game
+
+        :return: None
+        """
+
+        self.done_bidding = False
+        self.done_playing = False
+
+        # TODO[ス: self.contract is not used anywhere in the code - I am 100% sure it's needed,
+        #  but not utilised in many meaningful capacities
+        self.contract.reset()
+
+        # resetting bidding history
+        # 1C 1D 1H 1S 1N ... 7N (PASS - not considered)
+        self.history_bid = np.zeros(36, dtype=np.uint8)
+
+        self.history_play = np.full((NUM_PLAYERS, NUM_PLAYS), np.nan)
+
+        # generating vulnerabilities
+        self.vulnerability = (np.random.rand(NUM_PAIRS) > 0.5).astype(int)
+
+        # resetting auction_history
+        self.auction_history = np.zeros(AUCTION_HISTORY_SIZE, dtype=np.uint8)
+
+        # resetting bidding elimination signal - doubles and redoubles are not allowed at the start
+        self.elim_sig_bid = np.zeros(AUCTION_SPACE_SIZE, dtype=np.uint8)
+        self.elim_sig_bid[REDOUBLE_RANGE] = 1
+
+        # resetting the players' hands (aka one_hot_deal)
+        self.one_hot_deal = np.zeros((NUM_PLAYERS, NUM_CARDS), dtype=np.uint8)
+
+        # resetting playing elimination signal: without
+        self.elim_sig_play = np.zeros((NUM_PLAYERS, NUM_CARDS), dtype=np.uint8)
+
+        # resetting various counts
+        self.max_bid = -1
+
+        self.n_pass = 0
+        self.n_double = 0
+        self.n_redouble = 0
+
+        # index of the first bidder; start from the smallest one by default
+        # TODO[ス: should I care that the player in the 1st bidding seat always starts bidding?
+        #  I don't see how this could cause any problems
+        self.turn_bid = self.bidding_seats[0]
+
+        self.n_play_actions = 0
+        self.n_play_turns = 0
         self.tricks = np.zeros(NUM_PLAYERS)
+        self.score_play = np.zeros((NUM_PLAYS + 1, NUM_PLAYERS))
 
-        # vector of current scores
-        self.score_play = np.zeros(NUM_PLAYERS)
+    def _update_elim_sig_play(self) -> None:
+        """
+        An internal method that updates the play elimination signal: i.e. it recalculates the cards
+        that each player does not have
 
-        # TODO[ス: check whether resetting the environment on initialisation can break anything
-        # resetting the environment upon initialisation
-        # self.reset()
+        :return: None
+        """
 
-    def set_nmc(self, n):
-        self.nmc = n
+        self.elim_sig_play = 1 - self.one_hot_deal
 
-    def set_mode(self, debug):
-        self.debug = debug
+    def _increment_n_play_actions(self) -> None:
+        """
+        An internal method that increments self.n_play_actions (the count of the number of actions
+        that has been taken), and, if certain conditions are met, updates self.n_play_turns, the
+        number of tricks taken and scores
 
-    def reset(self, predeal_seats=None, reshuffle=True):  # North and South
+        :return: None
+        """
+
+        self.n_play_actions += 1
+
+        # incrementing the number of play turns that's been taken if all players have taken turn
+        # at playing
+        if self.n_play_actions % NUM_PLAYERS == 0:
+            # updating the number of tricks taken
+            self.__update_tricks_history()
+
+            self.n_play_turns += 1
+
+    def _update_tricks_history(self):
+
+        # TODO[ス write the damn thing. This method also requires:
+        #   - a 4 x 13 matrix of trick histories - this will make lives easier
+        #   - self._update_score() method should also be called here
+
+        raise NotImplementedError()
+
+    def reset(self,
+              predeal_seats=None,
+              reshuffle: bool = True,
+              return_deal: bool = True):  # North and South
         """
         This method resets the environment - namely:
            - clears bidding history
@@ -100,36 +198,14 @@ class BridgeEnv(object):
         :param predeal_seats: if not None, allocate cards to those seats. e.g. [0, 1] stands for
         North and East
         :param reshuffle: whether reshuffle the hands for the predeal seats
+        :param return_deal: whether the newly generated deal should be returned or not
+
         :return: deal
         """
 
-        # resetting bidding history
-        # 1C 1D 1H 1S 1N ... 7N (PASS - not considered)
-        self.bidding_history = np.zeros(36, dtype=np.uint8)
+        self._reset()
 
-        # generating vulnerabilities
-        self.vulnerability = (np.random.rand(NUM_PAIRS) > 0.5).astype(int)
-
-        # resetting auction_history
-        self.auction_history = 0 * self.auction_history
-
-        # resetting elimination_history - doubles and redoubles are not allowed at the start
-        self.elimination_signal[REDOUBLE_RANGE] = 1
-
-        # resetting various counts
-        self.max_bid = -1
-        self.contract = None
-        self.n_pass = 0
-        self.n_double = 0
-        self.n_redouble = 0
-
-        self.turn = self.bidding_seats[0]
-        self.done_bidding = False
-
-        self.tricks = np.zeros(NUM_PLAYERS)
-        self.score_play = np.zeros(NUM_PLAYERS)
-
-        # TODO[ス I've got no idea what the vars below do
+        # TODO[ス I've got no idea what the vars and the code below do
         self.strain_declarer = {0: {}, 1: {}}
         self.group_declarer = -1
         if predeal_seats is None:
@@ -137,12 +213,16 @@ class BridgeEnv(object):
 
         predeal = {}
         random.shuffle(self.cards)
-        if reshuffle:  # generate new hands for predeal seats.
+
+        # generate new hands for predeal seats.
+        if reshuffle:
             i = 0
-            self.one_hot_deal = np.zeros((len(Seat), len(FULL_DECK)), dtype=np.uint8)
+
             for seat in sorted(predeal_seats):
                 predeal[seat] = self.cards[i: i+len(Rank)]
-                self.one_hot_deal[seat] = one_hot_holding(predeal[seat]) # one hot cards
+
+                # one hot cards
+                self.one_hot_deal[seat] = one_hot_holding(predeal[seat])
                 i += len(Rank) # shift the index
             self.deal = Deal.prepare(predeal)
 
@@ -150,15 +230,40 @@ class BridgeEnv(object):
             convert_hands2string(self.deal)
 
         # setting the play elimination signals
-        self.elimination_signal_play = 1 - self.one_hot_deal
+        self.elim_sig_play = 1 - self.one_hot_deal
 
-        # if not allocated, zero vector is returned.
-        return (self.one_hot_deal[self.turn], self.bidding_history), {"turn": Seat[self.turn], "max_bid": self.max_bid}
+        if return_deal:
+            # if not allocated, zero vector is returned.
+            return (self.one_hot_deal[self.turn_bid], self.history_bid), \
+                   {"turn": Seat[self.turn_bid], "max_bid": self.max_bid}
+        else:
+            pass
+
+    def _update_score(self) -> None:
+        """
+        This method updates the current scores (from class's members), and puts them
+        to the appropriate locations in self.score_play
+
+        :return: None
+        """
+
+        # setting new score by iterating over players
+        # TODO[ス: self.contract.vulnerability[i] is incorrect - Contract class needs a new method
+        #  that returns the vulnerability of an individual player (as opposed to the pair)
+        self.score_play[self.n_play_turns,] = [
+            self._score_table[(
+                self.contract.level,
+                self.contract.suit,
+                self.tricks[i],
+                self.contract.vulnerability[i]
+            )]
+            for i in range(NUM_PLAYERS)
+        ]
 
     def step_bid(self, action_bid):
         """
         This method performs a bidding action submitted via the 'action' argument, and performs an
-        update of self.bidding_history and self.auction_history
+        update of self.history_bid and self.auction_history
 
         :param action_bid: bid action
 
@@ -173,7 +278,7 @@ class BridgeEnv(object):
 
         # what happens when we get a pass
         if action_bid == PASS_IDX:
-            self.bidding_history[action_bid] = 1 # PASS
+            self.history_bid[action_bid] = 1 # PASS
 
             if self.max_bid == -1:
                 self.auction_history[self.n_pass] = 1
@@ -195,20 +300,20 @@ class BridgeEnv(object):
             self.n_redouble = 0
             self.max_bid = action_bid
 
-            self.bidding_history[action_bid] = 1
-            self.bidding_history[-1] = 0
+            self.history_bid[action_bid] = 1
+            self.history_bid[-1] = 0
             self.auction_history[3 + 8*self.max_bid] = 1
 
             # this action can no longer be performed
-            self.elimination_signal[self.max_bid] = 1
+            self.elim_sig_bid[self.max_bid] = 1
 
             # doubles and redoubles are now permitted
-            self.elimination_signal[REDOUBLE_RANGE] = 0
+            self.elim_sig_bid[REDOUBLE_RANGE] = 0
 
             strain = convert_action2strain(action_bid)
-            group = Seat2Group[self.turn]
+            group = Seat2Group[self.turn_bid]
             if self.strain_declarer[group].get(strain, '') == '':
-                self.strain_declarer[group][strain] = self.turn # which one
+                self.strain_declarer[group][strain] = self.turn_bid # which one
             self.group_declarer = group # which group
         # what happens when we get a double
         elif action_bid == DOUBLE_IDX:
@@ -220,7 +325,7 @@ class BridgeEnv(object):
                 raise Exception("double is not currently allowed")
 
             self.n_double = 1
-            self.elimination_signal[DOUBLE_IDX] = 1
+            self.elim_sig_bid[DOUBLE_IDX] = 1
             self.auction_history[3 + 8*self.max_bid + 3] = 1
         # what happens when we get a redouble
         elif action_bid == REDOUBLE_IDX:
@@ -231,22 +336,23 @@ class BridgeEnv(object):
                 raise Exception("redouble is not currently allowed")
 
             self.n_redouble = 1
-            self.elimination_signal[REDOUBLE_IDX] = 1
+            self.elim_sig_bid[REDOUBLE_IDX] = 1
             self.auction_history[3 + 8*self.max_bid + 6] = 1
 
         # updating the ID of the next bidding player
-        self.turn = (self.turn+1) % len(Seat)  # loop
+        self.turn_bid = (self.turn_bid + 1) % len(Seat)  # loop
 
         # move to the participant
-        # TODO[ス: should not be used in the multi-agent version
+        # TODO[ス: for some reason (which I can no longer remember), I don't think that this
+        #  can be used in the multi-agent version
         while True:
-            if self.turn not in self.bidding_seats:
-                self.turn = (self.turn+1) % len(Seat)
+            if self.turn_bid not in self.bidding_seats:
+                self.turn_bid = (self.turn_bid + 1) % len(Seat)
                 self.n_pass += 1
             else:
                 break
 
-        hand = self.one_hot_deal[self.turn]
+        hand = self.one_hot_deal[self.turn_bid]
         reward = 0
         # state is the next bidding player's state
         if (self.n_pass >= 3 and self.max_bid < 0) or self.max_bid == 34:
@@ -262,6 +368,9 @@ class BridgeEnv(object):
 
             # np.mean is moved to score
             declarer = self.strain_declarer[self.group_declarer][strain] # thise group's first declarer
+
+            # TODO[ス: game rewards / scores will no longer be calculated during bidding - the next
+            #  bit of code needs to go
             reward = Deal.score(dealer=self.deal,
                                 level=level,
                                 strain=strain,
@@ -270,8 +379,8 @@ class BridgeEnv(object):
                                 mode=self.score_mode)
             self.done_bidding = True
 
-        state = (hand, self.bidding_history)
-        info = {"turn": Seat[self.turn], "max_bid": self.max_bid}
+        state = (hand, self.history_bid)
+        info = {"turn": Seat[self.turn_bid], "max_bid": self.max_bid}
         if self.debug:
             log_state(state, reward, self.done_bidding, info)
 
@@ -302,20 +411,44 @@ class BridgeEnv(object):
 
         return out
 
-    def step_play(self, action_play):
-
+    def step_play(self,
+                  player: int,
+                  action_play: int) -> None:
         """
-        Performs a playing action
+        Performs a playing action:
+           - storing the player's action to history_play
+           - (if necessary) updating n_play_turns
+           - (if necessary) updating scores
 
+        :param player: a the index of the player that performs the action
         :param action_play: a [1, 52] np.array with a single one
 
-        :return:
+        :return: None
         """
 
         # do nothing if we are not done bidding yet or we are done playing
         if (not self.done_bidding) or self.done_playing:
             pass
 
-        # checking whether the player has the submitted action_play (card)
+        # exception if the player does not exist
+        if player not in Seat:
+            raise Exception(f"Player {player} does not exist")
+
+        # exception if the action is not in the range of [0, 51]
+        if action_play not in range(0, NUM_CARDS):
+            raise Exception(f"Action {action_play} is invalid")
+
+        # exception if the player does not have the card (action_play) it wants to play
+        if self.elim_sig_play[player, action_play] == 1:
+            raise Exception(f"Player {player} does not posses the card {action_play}")
+
+        # adding the current action to the play history
+        self.history_play[self.n_play_turns, player] = action_play
+
+        # updating the hand (one_hot_deal)
+        self.one_hot_deal[player, action_play] = 0
+
+        # updating the play elimination signal
+        self._update_elim_sig_play()
 
         return None

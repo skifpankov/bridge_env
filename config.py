@@ -3,8 +3,10 @@ import numpy as np
 NUM_PLAYERS: int = 4
 NUM_PAIRS: int = 2
 NUM_CARDS: int = 52
+
 AUCTION_SPACE_SIZE: int = 38
 AUCTION_HISTORY_SIZE: int = 322
+NUM_PLAYS = int(NUM_CARDS / NUM_PLAYERS)
 
 PASS_IDX = 35
 DOUBLE_IDX = 36

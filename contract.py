@@ -1,7 +1,7 @@
 from typing import Union
 import numpy as np
 
-from config import NUM_PAIRS, Seat2Group, Strain2str
+from config import NUM_PAIRS, NUM_PLAYERS, Seat2Group, Strain2str
 
 
 class Contract(object):
@@ -18,7 +18,10 @@ class Contract(object):
         self._level = None
         self._double = False
         self._redouble = False
-        self._vulnerability = np.zeros(NUM_PAIRS)
+        self._pair_vulnerability = None
+        self._player_vulnerability = None
+
+        self.reset()
 
     def reset(self) -> None:
         """
@@ -33,7 +36,8 @@ class Contract(object):
         self._level = None
         self._double = False
         self._redouble = False
-        self._vulnerability = np.zeros(NUM_PAIRS)
+        self._pair_vulnerability = np.zeros(NUM_PAIRS, dtype=np.uint8)
+        self._player_vulnerability = np.zeros(NUM_PLAYERS, dtype=np.uint8)
 
     @property
     def declarer(self):
@@ -116,13 +120,13 @@ class Contract(object):
 
     @property
     def vulnerability(self):
-        return self._vulnerability
+        return self._pair_vulnerability
 
     @vulnerability.setter
     def vulnerability(self, vulnerability: np.array):
 
         # setting the value of vulnerability
-        self._vulnerability = vulnerability
+        self._pair_vulnerability = vulnerability
 
     def from_bid(self, bid: int, double: bool = False, redouble: bool = False) -> None:
         """
@@ -133,7 +137,8 @@ class Contract(object):
         :return: None
         """
 
-        # bids go up in the following order: [1C, 1D, 1H, 1S, 1N, ..., 7N]
+        # bids go up in the following order: [1C, 1D, 1H, 1S, 1N, ..., 7N] (i.e.
+        # they are in ascending order)
 
         # suit is the remainder of dividing the bid by 5
         self.suit = bid % 5

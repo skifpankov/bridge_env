@@ -260,7 +260,7 @@ def precompute_scores_v2(full_version: bool = False,
     :param normalise: whether the score should be normalised
     :param min_zero: whether the lowest score should be 0 or not
     :param keep_overtricks:
-    :param game:
+    :param game: whether
 
     :return: a dictionary of all possible bridge scores
     """
@@ -285,7 +285,7 @@ def precompute_scores_v2(full_version: bool = False,
     else:
         #print("Generating score dictionary, without vul and double")
         input_space = [(bid_tricks, trump, actual_tricks)
-                        for bid_tricks in range(1,8)
+                        for bid_tricks in range(1, 8)
                         for trump in range(5)
                         for actual_tricks in range(14)]
 

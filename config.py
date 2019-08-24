@@ -20,6 +20,7 @@ Rank = list(range(2, 15))
 FULL_DECK = list(range(NUM_CARDS))
 
 Seat2Group = {0: 0, 1: 1, 2: 0, 3: 1} # or s%2
+Group2Seat = {0: [0, 2], 1: [1, 3]}
 
 Seat2str = {0: "N", 1: "E", 2: "S", 3: "W"}
 

@@ -1,7 +1,7 @@
 from typing import Union
 import numpy as np
 
-from config import NUM_PAIRS, NUM_PLAYERS, Seat2Group, Strain2str
+from config import NUM_PAIRS, NUM_PLAYERS, Seat2Group, Group2Seat, Strain2str
 
 
 class Contract(object):
@@ -127,6 +127,14 @@ class Contract(object):
 
         # setting the value of vulnerability
         self._pair_vulnerability = vulnerability
+
+        # setting the vulnerabilities of players based on pair vulnerability
+        for i, val in enumerate(self._pair_vulnerability):
+            self._player_vulnerability[Group2Seat[i]] = val
+
+    @property
+    def player_vulnerability(self):
+        return self._player_vulnerability
 
     def from_bid(self, bid: int, double: bool = False, redouble: bool = False) -> None:
         """

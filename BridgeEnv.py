@@ -79,7 +79,7 @@ class BridgeEnv(object):
 
         # index of the first player
         # TODO[ス: finish writing the logic for self.turn_play
-        self.turn_play = self.bidding_seats[0]
+        self.turn_play = None
 
         # index of playing rounds complete
         self.n_play_actions = None
@@ -102,10 +102,10 @@ class BridgeEnv(object):
         """
 
         self.done_bidding = False
+
+        # TODO[ス is self.done_playing even used anywhere?
         self.done_playing = False
 
-        # TODO[ス: self.contract is not used anywhere in the code - I am 100% sure it's needed,
-        #  but not utilised in many meaningful capacities
         self.contract.reset()
 
         # resetting bidding history
@@ -141,10 +141,11 @@ class BridgeEnv(object):
         # TODO[ス: should I care that the player in the 1st bidding seat always starts bidding?
         #  I don't see how this could cause any problems
         self.turn_bid = self.bidding_seats[0]
+        self.turn_play = None
 
         self.n_play_actions = 0
         self.n_play_turns = 0
-        self.tricks = np.zeros(NUM_PLAYERS)
+        self.tricks = np.zeros(NUM_PLAYERS, dtype=np.uint8)
         self.score_play = np.zeros((NUM_PLAYS + 1, NUM_PLAYERS))
 
     def _update_elim_sig_play(self) -> None:
@@ -171,18 +172,40 @@ class BridgeEnv(object):
         # incrementing the number of play turns that's been taken if all players have taken turn
         # at playing
         if self.n_play_actions % NUM_PLAYERS == 0:
-            # updating the number of tricks taken
-            self.__update_tricks_history()
+            # updating the number of tricks taken (and hence scores)
+            self._update_tricks_history()
 
-            self.n_play_turns += 1
+    def _update_tricks_history(self) -> None:
 
-    def _update_tricks_history(self):
-
-        # TODO[ス write the damn thing. This method also requires:
-        #   - a 4 x 13 matrix of trick histories - this will make lives easier
+        # TODO[ス just write the bad mothafucker...
         #   - self._update_score() method should also be called here
 
-        raise NotImplementedError()
+        # this is the most recent fully played-out round
+        last_play = self.history_play[self.n_play_turns, :]
+
+        # getting all the trump cards that were played in the most recent round (players
+        # who did not play a trump card will be assigned the value 0)
+        trump_cards = last_play * (last_play // 13 == self.contract.suit)
+
+        # if the contract's suit is 'No Trump', or if trump_cards is empty
+        # TODO[ス I am almost 100% positive that the two conditions are identical (iff), but I will
+        #  keep it safe and explicit for the time being
+        if (self.contract.suit_as_str == 'N') or (all(trump_cards == 0)):
+            # getting the index of the player with the highest card in last_play
+            winner = last_play.argmax()
+        else:
+            winner = trump_cards.argmax()
+
+        # getting the indices of players on the winning side
+        winners = Group2Seat[Seat2Group[winner]]
+
+        # incrementing the tricks counter for the winning players
+        self.tricks[winners] += 1
+
+        # incrementing the number of
+        self.n_play_turns += 1
+
+        self._update_score()
 
     def reset(self,
               predeal_seats=None,
@@ -248,22 +271,20 @@ class BridgeEnv(object):
         """
 
         # setting new score by iterating over players
-        # TODO[ス: self.contract.vulnerability[i] is incorrect - Contract class needs a new method
-        #  that returns the vulnerability of an individual player (as opposed to the pair)
-        self.score_play[self.n_play_turns,] = [
+        self.score_play[self.n_play_turns, ] = [
             self._score_table[(
                 self.contract.level,
                 self.contract.suit,
                 self.tricks[i],
-                self.contract.vulnerability[i]
+                self.contract.player_vulnerability[i]
             )]
             for i in range(NUM_PLAYERS)
         ]
 
     def step_bid(self, action_bid):
         """
-        This method performs a bidding action submitted via the 'action' argument, and performs an
-        update of self.history_bid and self.auction_history
+        This method performs a single bid action submitted via the 'action' argument, and
+        performs an update of self.history_bid and self.auction_history
 
         :param action_bid: bid action
 
@@ -278,7 +299,7 @@ class BridgeEnv(object):
 
         # what happens when we get a pass
         if action_bid == PASS_IDX:
-            self.history_bid[action_bid] = 1 # PASS
+            self.history_bid[action_bid] = 1
 
             if self.max_bid == -1:
                 self.auction_history[self.n_pass] = 1
@@ -339,12 +360,12 @@ class BridgeEnv(object):
             self.elim_sig_bid[REDOUBLE_IDX] = 1
             self.auction_history[3 + 8*self.max_bid + 6] = 1
 
-        # updating the ID of the next bidding player
-        self.turn_bid = (self.turn_bid + 1) % len(Seat)  # loop
+        # updating the index of the next bidding player
+        self.turn_bid = (self.turn_bid + 1) % len(Seat)
 
         # move to the participant
-        # TODO[ス: for some reason (which I can no longer remember), I don't think that this
-        #  can be used in the multi-agent version
+        # NB: this code is only useful if not all players are bidding (i.e. self.bidding_seats
+        # does not contain everybody)
         while True:
             if self.turn_bid not in self.bidding_seats:
                 self.turn_bid = (self.turn_bid + 1) % len(Seat)
@@ -354,6 +375,7 @@ class BridgeEnv(object):
 
         hand = self.one_hot_deal[self.turn_bid]
         reward = 0
+
         # state is the next bidding player's state
         if (self.n_pass >= 3 and self.max_bid < 0) or self.max_bid == 34:
 
@@ -370,7 +392,7 @@ class BridgeEnv(object):
             declarer = self.strain_declarer[self.group_declarer][strain] # thise group's first declarer
 
             # TODO[ス: game rewards / scores will no longer be calculated during bidding - the next
-            #  bit of code needs to go
+            #  bit of code needs to be removed
             reward = Deal.score(dealer=self.deal,
                                 level=level,
                                 strain=strain,
@@ -379,6 +401,18 @@ class BridgeEnv(object):
                                 mode=self.score_mode)
             self.done_bidding = True
 
+            # storing the contract
+            self.contract.from_bid(bid=self.max_bid,
+                                   double=(self.n_double > 0),
+                                   redouble=(self.n_redouble > 0))
+
+            # setting the index of the first player
+            self.turn_play = (self.turn_bid + 1) % len(Seat)
+
+            # since bidding is now done, we need to set the initial value of self.score_play
+            self._update_score()
+
+        # TODO[ス: remove the next lines - this method should no longer return anything
         state = (hand, self.history_bid)
         info = {"turn": Seat[self.turn_bid], "max_bid": self.max_bid}
         if self.debug:
@@ -386,6 +420,7 @@ class BridgeEnv(object):
 
         return state, reward, self.done_bidding, info
 
+    # TODO[ス deprecate self.score() method
     def score(self,
               tricks: Union[List, np.array],
               bid: int = None,
@@ -401,7 +436,6 @@ class BridgeEnv(object):
         """
 
         # using class's internal values if bid or vulnerability were not submitted
-        # TODO[ス this will break if the class has just been initialised - please add more checks
         if bid is None:
             bid = self.max_bid
         if vulnerability is None:
@@ -450,5 +484,11 @@ class BridgeEnv(object):
 
         # updating the play elimination signal
         self._update_elim_sig_play()
+
+        # this method will update tricks and scores (if it's necessary)
+        self._increment_n_play_actions()
+
+        # setting the index of the next player
+        self.turn_play = (self.turn_play + 1) % len(Seat)
 
         return None

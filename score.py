@@ -313,11 +313,11 @@ def precompute_scores_v2(full_version: bool = False,
     return scorer
 
 
-print("Calculating score tables")
+#print("Calculating score tables")
 SCORE_TABLE_v0 = precompute_scores_IMP()
 SCORE_TABLE_v1 = precompute_scores_IMP(version="v1")
 SCORE_TABLE_v2_simple = precompute_scores_v2(full_version=False, normalise=True)
 SCORE_TABLE_v2_full = precompute_scores_v2(full_version=True, normalise=True)
 SCORE_TABLE_v3 = precompute_scores_v2(full_version=False, normalise=True, keep_overtricks=False)  # overtrick score = 0
 SCORE_TABLE_v4 = precompute_scores_v2(full_version=False, normalise=True, game=True)
-print("SCORE_TABLE CALCULATIONS COMPLETED")
+#print("SCORE_TABLE CALCULATIONS COMPLETED")

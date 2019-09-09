@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Tuple
 import random
 import numpy as np
 import pandas as pd
@@ -118,7 +118,7 @@ class BridgeEnv(object):
         self.vulnerability = (np.random.rand(NUM_PAIRS) > 0.5).astype(int)
 
         # resetting auction_history
-        self.auction_history = np.zeros(AUCTION_HISTORY_SIZE, dtype=np.uint8)
+        self.auction_history = np.zeros(self.auction_history_shape, dtype=np.uint8)
 
         # resetting bidding elimination signal - doubles and redoubles are not allowed at the start
         self.elim_sig_bid = np.zeros(AUCTION_SPACE_SIZE, dtype=np.uint8)
@@ -492,3 +492,64 @@ class BridgeEnv(object):
         self.turn_play = (self.turn_play + 1) % len(Seat)
 
         return None
+
+    @property
+    def auction_history_shape(self) -> Tuple:
+        """
+
+        :return: A tuple of the shape of auction history vector
+        """
+        return AUCTION_HISTORY_SIZE, 1
+
+    @property
+    def deal_shape(self) -> Tuple:
+        """
+
+        :return: A tuple of the shape of the deal (i.e. cards held by all players)
+        """
+
+        return NUM_PLAYERS, NUM_CARDS
+
+    @property
+    def belief_shape(self) -> Tuple:
+        """
+
+        :return:
+        """
+        return self.deal_shape
+
+    @property
+    def bid_policy_shape(self) -> Tuple:
+        """
+
+        :return:
+        """
+        return AUCTION_SPACE_SIZE, 1
+
+    @property
+    def play_policy_shape(self) -> Tuple:
+        """
+
+        :return:
+        """
+
+        return NUM_CARDS, 1
+
+    @property
+    def elim_sig_bid_shape(self) -> Tuple:
+        """
+        Shape of elimination signal for bidding actions (bids)
+
+        :return: A tuple
+        """
+        return self.bid_policy_shape
+
+    @property
+    def elim_sig_play_shape(self) -> Tuple:
+        """
+        Shape of elimination signal for playing actions
+
+        :return: A tuple
+        """
+
+        return self.play_policy_shape

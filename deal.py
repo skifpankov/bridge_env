@@ -4,7 +4,7 @@ from copy import deepcopy
 from bridge_utils import convert_hands2string, convert_level_strain2action
 from config import *
 import random
-from scoredd import IMP_TABLE
+from bridge_env.scoredd import IMP_TABLE
 
 # def convert_id2seat(seat_id):
 #     return Seat[seat_id]

@@ -1,7 +1,7 @@
 from typing import Union
 import numpy as np
 
-from config import NUM_PAIRS, NUM_PLAYERS, Seat2Group, Group2Seat, Strain2str
+from bridge_env.config import NUM_PAIRS, NUM_PLAYERS, Seat2Group, Group2Seat, Strain2str
 
 
 class Contract(object):

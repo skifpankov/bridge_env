@@ -1,15 +1,15 @@
 from typing import List, Union, Tuple
+from copy import deepcopy
+
+from bridge_env.deal import Deal
+from bridge_env.contract import Contract
+from bridge_env.config import *
+from bridge_env.bridge_utils import *
+from bridge_env.score import precompute_scores_v2
+
 import random
 import numpy as np
 import pandas as pd
-from copy import deepcopy
-
-from deal import Deal
-from contract import Contract
-from config import *
-from bridge_utils import *
-from score import precompute_scores_v2
-
 
 # CHEAT-SHEET FOR BIDS
 # 0-34: contract bids [1C, 1D, 1H, 1S, 1NT, ..., 7S, 7NT]
@@ -499,7 +499,7 @@ class BridgeEnv(object):
 
         :return: A tuple of the shape of auction history vector
         """
-        return AUCTION_HISTORY_SIZE, 1
+        return (AUCTION_HISTORY_SIZE, )
 
     @property
     def deal_shape(self) -> Tuple:
@@ -509,6 +509,15 @@ class BridgeEnv(object):
         """
 
         return NUM_PLAYERS, NUM_CARDS
+
+    @property
+    def vuln_shape(self) -> Tuple:
+        """
+
+        :return: A tuple of the shape of the vulnerabilities vector
+        """
+
+        return (NUM_PLAYERS, )
 
     @property
     def belief_shape(self) -> Tuple:
@@ -524,7 +533,7 @@ class BridgeEnv(object):
 
         :return:
         """
-        return AUCTION_SPACE_SIZE, 1
+        return (AUCTION_SPACE_SIZE, )
 
     @property
     def play_policy_shape(self) -> Tuple:
@@ -533,7 +542,7 @@ class BridgeEnv(object):
         :return:
         """
 
-        return NUM_CARDS, 1
+        return (NUM_CARDS, )
 
     @property
     def elim_sig_bid_shape(self) -> Tuple:

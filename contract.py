@@ -114,9 +114,9 @@ class Contract(object):
 
         # we can only redouble if double is True; if not, redouble should be set to False
         if self.double:
-            self.redouble = redouble
+            self._redouble = redouble
         else:
-            self.redouble = False
+            self._redouble = False
 
     @property
     def vulnerability(self):

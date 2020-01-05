@@ -20,6 +20,7 @@ import pandas as pd
 # CHEAT-SHEET FOR keys of self._score_table:
 #    (bid_tricks, trump, actual_tricks, vul, double)
 
+
 class BridgeEnv(object):
     """
     This class is intended to replicate bridge bidding and playing
@@ -39,7 +40,9 @@ class BridgeEnv(object):
         # deal is the state
         self.deal = None
         self.one_hot_deal = None
+        self.one_hot_known_deal = None
         self.vulnerability = None
+        self.vulnerabilities = None
 
         self.auction_history = None
 
@@ -78,7 +81,6 @@ class BridgeEnv(object):
         self.turn_bid = None
 
         # index of the first player
-        # TODO[ス: finish writing the logic for self.turn_play
         self.turn_play = None
 
         # index of playing rounds complete
@@ -102,8 +104,6 @@ class BridgeEnv(object):
         """
 
         self.done_bidding = False
-
-        # TODO[ス is self.done_playing even used anywhere?
         self.done_playing = False
 
         self.contract.reset()
@@ -116,19 +116,21 @@ class BridgeEnv(object):
 
         # generating vulnerabilities
         self.vulnerability = (np.random.rand(NUM_PAIRS) > 0.5).astype(int)
+        self.vulnerabilities = self.vulnerability[[0, 1, 0, 1]]
 
         # resetting auction_history
         self.auction_history = np.zeros(self.auction_history_shape, dtype=np.uint8)
 
         # resetting bidding elimination signal - doubles and redoubles are not allowed at the start
-        self.elim_sig_bid = np.zeros(AUCTION_SPACE_SIZE, dtype=np.uint8)
-        self.elim_sig_bid[REDOUBLE_RANGE] = 1
+        self.elim_sig_bid = np.ones(AUCTION_SPACE_SIZE, dtype=np.uint8)
+        self.elim_sig_bid[REDOUBLE_RANGE] = 0
 
         # resetting the players' hands (aka one_hot_deal)
         self.one_hot_deal = np.zeros((NUM_PLAYERS, NUM_CARDS), dtype=np.uint8)
+        self.one_hot_known_deal = np.ones((NUM_PLAYERS, NUM_CARDS), dtype=np.uint8)
 
         # resetting playing elimination signal: without
-        self.elim_sig_play = np.zeros((NUM_PLAYERS, NUM_CARDS), dtype=np.uint8)
+        self.elim_sig_play = np.ones((NUM_PLAYERS, NUM_CARDS), dtype=np.uint8)
 
         # resetting various counts
         self.max_bid = -1
@@ -151,12 +153,12 @@ class BridgeEnv(object):
     def _update_elim_sig_play(self) -> None:
         """
         An internal method that updates the play elimination signal: i.e. it recalculates the cards
-        that each player does not have
+        that each player has
 
         :return: None
         """
 
-        self.elim_sig_play = 1 - self.one_hot_deal
+        self.elim_sig_play = self.one_hot_deal
 
     def _increment_n_play_actions(self) -> None:
         """
@@ -175,13 +177,14 @@ class BridgeEnv(object):
             # updating the number of tricks taken (and hence scores)
             self._update_tricks_history()
 
+        # setting self.done_playing if the maximum number of n_play_actions has been reached
+        if self.n_play_actions == NUM_CARDS:
+            self.done_playing = True
+
     def _update_tricks_history(self) -> None:
 
-        # TODO[ス just write the bad mothafucker...
-        #   - self._update_score() method should also be called here
-
         # this is the most recent fully played-out round
-        last_play = self.history_play[self.n_play_turns, :]
+        last_play = self.history_play[:, self.n_play_turns]
 
         # getting all the trump cards that were played in the most recent round (players
         # who did not play a trump card will be assigned the value 0)
@@ -202,7 +205,7 @@ class BridgeEnv(object):
         # incrementing the tricks counter for the winning players
         self.tricks[winners] += 1
 
-        # incrementing the number of
+        # incrementing the number of playing turns
         self.n_play_turns += 1
 
         self._update_score()
@@ -253,7 +256,7 @@ class BridgeEnv(object):
             convert_hands2string(self.deal)
 
         # setting the play elimination signals
-        self.elim_sig_play = 1 - self.one_hot_deal
+        self._update_elim_sig_play()
 
         if return_deal:
             # if not allocated, zero vector is returned.
@@ -276,7 +279,8 @@ class BridgeEnv(object):
                 self.contract.level,
                 self.contract.suit,
                 self.tricks[i],
-                self.contract.player_vulnerability[i]
+                self.contract.player_vulnerability[i],
+                int(self.contract.double + self.contract.redouble)
             )]
             for i in range(NUM_PLAYERS)
         ]
@@ -299,6 +303,10 @@ class BridgeEnv(object):
 
         # what happens when we get a pass
         if action_bid == PASS_IDX:
+
+            # we are not allowed to make a double for now
+            self.elim_sig_bid[DOUBLE_IDX] = 0
+
             self.history_bid[action_bid] = 1
 
             if self.max_bid == -1:
@@ -309,6 +317,7 @@ class BridgeEnv(object):
 
             # incrementing the current number of passes
             self.n_pass += 1
+
         # what happens when we get a contract bid
         elif action_bid < PASS_IDX:
 
@@ -325,17 +334,19 @@ class BridgeEnv(object):
             self.history_bid[-1] = 0
             self.auction_history[3 + 8*self.max_bid] = 1
 
-            # this action can no longer be performed
-            self.elim_sig_bid[self.max_bid] = 1
+            # this action and all the actions below can no longer be performed
+            self.elim_sig_bid[:(1 + self.max_bid)] = 0
 
-            # doubles and redoubles are now permitted
-            self.elim_sig_bid[REDOUBLE_RANGE] = 0
+            # doubles are now permitted, redoubles are not permitted
+            self.elim_sig_bid[DOUBLE_IDX] = 1
+            self.elim_sig_bid[REDOUBLE_IDX] = 0
 
             strain = convert_action2strain(action_bid)
             group = Seat2Group[self.turn_bid]
             if self.strain_declarer[group].get(strain, '') == '':
                 self.strain_declarer[group][strain] = self.turn_bid # which one
             self.group_declarer = group # which group
+
         # what happens when we get a double
         elif action_bid == DOUBLE_IDX:
             # doubles are not permitted when
@@ -346,18 +357,22 @@ class BridgeEnv(object):
                 raise Exception("double is not currently allowed")
 
             self.n_double = 1
-            self.elim_sig_bid[DOUBLE_IDX] = 1
+            self.elim_sig_bid[DOUBLE_IDX] = 0
+            self.elim_sig_bid[REDOUBLE_IDX] = 1
             self.auction_history[3 + 8*self.max_bid + 3] = 1
+
         # what happens when we get a redouble
         elif action_bid == REDOUBLE_IDX:
-            # doubles are not permitted when
+            # redoubles are not permitted when
             #    no contract bids have been made OR
-            #    a double bid has already been made
-            if (self.max_bid == -1) or (self.n_redouble == 1):
+            #    a double bid has not been made OR
+            #    a redouble bid has already been made
+            if (self.max_bid == -1) or (self.n_double == 0) or (self.n_redouble == 1):
                 raise Exception("redouble is not currently allowed")
 
             self.n_redouble = 1
-            self.elim_sig_bid[REDOUBLE_IDX] = 1
+            self.elim_sig_bid[DOUBLE_IDX] = 0
+            self.elim_sig_bid[REDOUBLE_IDX] = 0
             self.auction_history[3 + 8*self.max_bid + 6] = 1
 
         # updating the index of the next bidding player
@@ -473,14 +488,15 @@ class BridgeEnv(object):
             raise Exception(f"Action {action_play} is invalid")
 
         # exception if the player does not have the card (action_play) it wants to play
-        if self.elim_sig_play[player, action_play] == 1:
+        if self.elim_sig_play[player, action_play] == 0:
             raise Exception(f"Player {player} does not posses the card {action_play}")
 
         # adding the current action to the play history
-        self.history_play[self.n_play_turns, player] = action_play
+        self.history_play[player, self.n_play_turns] = action_play
 
         # updating the hand (one_hot_deal)
         self.one_hot_deal[player, action_play] = 0
+        self.one_hot_known_deal[[x for x in range(NUM_PLAYERS) if x != player], action_play] = 0
 
         # updating the play elimination signal
         self._update_elim_sig_play()
@@ -492,6 +508,19 @@ class BridgeEnv(object):
         self.turn_play = (self.turn_play + 1) % len(Seat)
 
         return None
+
+    def player_known_deal(self, player: int):
+
+        out = self.one_hot_known_deal.copy()
+        out[player, :] = self.one_hot_deal[player, :]
+
+        idx = np.where(out[player, :] == 1)
+
+        for x in range(NUM_PLAYERS):
+            if x != player:
+                out[x, idx] = 0
+
+        return out
 
     @property
     def auction_history_shape(self) -> Tuple:

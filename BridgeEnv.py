@@ -115,7 +115,7 @@ class BridgeEnv(object):
         self.history_play = np.full((NUM_PLAYERS, NUM_PLAYS), np.nan)
 
         # generating vulnerabilities
-        self.vulnerability = (np.random.rand(NUM_PAIRS) > 0.5).astype(int)
+        self.vulnerability = (np.random.rand(NUM_PAIRS) > 0.5).astype(np.uint8)
         self.vulnerabilities = self.vulnerability[[0, 1, 0, 1]]
 
         # resetting auction_history
